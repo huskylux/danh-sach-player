@@ -1,0 +1,53 @@
+-- ===== PLAYER LIST UI =====
+repeat task.wait() until game:IsLoaded() and game.Players.LocalPlayer
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+-- Create GUI
+local gui = Instance.new("ScreenGui")
+gui.Name = "PlayerListUI"
+gui.ResetOnSpawn = false
+gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+local frame = Instance.new("Frame", gui)
+frame.Size = UDim2.new(0, 250, 0, 300)
+frame.Position = UDim2.new(0, 20, 0.3, 0)
+frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+frame.BorderSizePixel = 0
+frame.Active = true
+frame.Draggable = true
+
+local title = Instance.new("TextLabel", frame)
+title.Size = UDim2.new(1, 0, 0, 30)
+title.BackgroundTransparency = 1
+title.Text = "Player List"
+title.TextColor3 = Color3.fromRGB(0, 255, 0)
+title.TextScaled = true
+title.Font = Enum.Font.SourceSansBold
+
+local list = Instance.new("TextLabel", frame)
+list.Position = UDim2.new(0, 5, 0, 35)
+list.Size = UDim2.new(1, -10, 1, -40)
+list.BackgroundTransparency = 1
+list.TextXAlignment = Enum.TextXAlignment.Left
+list.TextYAlignment = Enum.TextYAlignment.Top
+list.TextWrapped = true
+list.Font = Enum.Font.SourceSans
+list.TextColor3 = Color3.fromRGB(255, 255, 255)
+list.TextSize = 14
+
+-- Update function
+local function updateList()
+    local text = ""
+    for _, plr in ipairs(Players:GetPlayers()) do
+        text ..= "- " .. plr.Name .. "\n"
+    end
+    list.Text = text
+end
+
+-- Events
+Players.PlayerAdded:Connect(updateList)
+Players.PlayerRemoving:Connect(updateList)
+
+updateList()
