@@ -1,156 +1,36 @@
---================= ANTI LOAD AGAIN =================--
-getgenv().SERVER_HOP_LOADED = getgenv().SERVER_HOP_LOADED or false
-if getgenv().SERVER_HOP_LOADED then return end
-getgenv().SERVER_HOP_LOADED = true
+--================= AUTO HOP + RETRY (FIXED) =================--
+task.spawn(function()
 
---================= WAIT GAME =================--
-repeat task.wait() until game:IsLoaded() and game.Players.LocalPlayer
+    -- ⏱ Chờ 65 giây đầu tiên
+    task.wait(65)
 
---================= SERVICES =================--
-local Players = game:GetService("Players")
-local HttpService = game:GetService("HttpService")
-local TeleportService = game:GetService("TeleportService")
+    -- 🔁 Sau 65s: thử teleport liên tục mỗi 1s
+    while true do
 
-local LP = Players.LocalPlayer
-local PlaceId = game.PlaceId
+        -- ❗ Chưa có server thì chờ
+        if not ServerList[1] then
+            task.wait(1)
+            continue
+        end
 
---================= GUI =================--
-local gui = Instance.new("ScreenGui", game.CoreGui)
-gui.Name = "ServerHopGUI"
+        -- 🚀 Thử teleport
+        local ok, err = pcall(function()
+            TeleportService:TeleportToPlaceInstance(
+                PlaceId,
+                ServerList[1].id,
+                LP
+            )
+        end)
 
-local frame = Instance.new("Frame", gui)
-frame.Size = UDim2.new(0, 320, 0, 420)
-frame.Position = UDim2.new(0, 10, 0, 10)
-frame.BackgroundColor3 = Color3.fromRGB(30,30,30)
-frame.BorderSizePixel = 0
-
-local title = Instance.new("TextLabel", frame)
-title.Size = UDim2.new(1,0,0,30)
-title.Text = "SERVER HOP (LEAST PLAYER)"
-title.TextColor3 = Color3.new(1,1,1)
-title.BackgroundTransparency = 1
-title.TextScaled = true
-
-local count = Instance.new("TextLabel", frame)
-count.Position = UDim2.new(0,0,0,30)
-count.Size = UDim2.new(1,0,0,25)
-count.TextColor3 = Color3.fromRGB(0,255,0)
-count.BackgroundTransparency = 1
-count.TextScaled = true
-
-local list = Instance.new("TextLabel", frame)
-list.Position = UDim2.new(0,5,0,60)
-list.Size = UDim2.new(1,-10,1,-65)
-list.TextWrapped = true
-list.TextYAlignment = Enum.TextYAlignment.Top
-list.TextXAlignment = Enum.TextXAlignment.Left
-list.TextColor3 = Color3.new(1,1,1)
-list.BackgroundTransparency = 1
-list.Text = ""
-
---================= SERVER LOGIC =================--
-local ServerList = {}
-
-local function GetServers(cursor)
-    local url = "https://games.roblox.com/v1/games/"..PlaceId.."/servers/Public?limit=100&sortOrder=Asc"
-    if cursor then url = url.."&cursor="..cursor end
-
-    local ok, res = pcall(function()
-        return game:HttpGet(url)
-    end)
-
-    if ok then
-        return HttpService:JSONDecode(res)
-    end
-end
-
-local function UpdateServers()
-    local all = {}
-    local cursor
-
-    repeat
-        local data = GetServers(cursor)
-        if data and data.data then
-            for _,v in ipairs(data.data) do
-                if v.playing < v.maxPlayers then
-                    table.insert(all,{
-                        id = v.id,
-                        players = v.playing
-                    })
-                end
-            end
-            cursor = data.nextPageCursor
-        else
+        if ok then
+            -- ✅ Gọi teleport thành công
+            -- Roblox sẽ tự chuyển server → script dừng tại đây
+            warn("✅ Teleport started →", ServerList[1].id)
             break
-        end
-    until not cursor
-
-    table.sort(all,function(a,b)
-        return a.players < b.players
-    end)
-
-    ServerList = all
-
-    local txt = ""
-    for i,v in ipairs(all) do
-        txt ..= i..". ["..v.players.." players] "..v.id.."\n"
-    end
-    list.Text = txt
-end
-
---================= AUTO UPDATE (1s) =================--
-task.spawn(function()
-    while true do
-        count.Text = "Current Server Players: "..#Players:GetPlayers()
-        UpdateServers()
-        task.wait(1)
-    end
-end)
-
---================= AUTO HOP + RETRY =================--
-task.spawn(function()
-    while true do
-        task.wait(65) -- 1 phút 5 giây trước khi bắt đầu hop
-
-        while true do
-            if not ServerList[1] then
-                task.wait(1)
-                continue
-            end
-
-            local success, err = pcall(function()
-                TeleportService:TeleportToPlaceInstance(
-                    PlaceId,
-                    ServerList[1].id,
-                    LP
-                )
-            end)
-
-            if success then
-                warn("✅ Teleport started → Server:", ServerList[1].id)
-                break -- teleport đã bắt đầu, Roblox sẽ chuyển sv
-            else
-                warn("❌ Teleport failed, retry in 1s:", err)
-                task.wait(1)
-            end
-
-task.spawn(function()
-    task.wait(65) -- chờ 65s đầu
-
-    while true do
-        if ServerList[1] then
-            pcall(function()
-                TeleportService:TeleportToPlaceInstance(
-                    PlaceId,
-                    ServerList[1].id,
-                    LP
-                )
-            end)
-        end
-        task.wait(1) -- retry mỗi 1s cho tới khi đi sv
-    end
-end)
-
+        else
+            -- ❌ Teleport lỗi → retry sau 1s
+            warn("❌ Teleport failed, retry in 1s:", err)
+            task.wait(1)
         end
     end
 end)
