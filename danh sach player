@@ -1,7 +1,6 @@
--- ===== PLAYER COUNT UI + AUTO HOP LOWEST SERVER =====
+-- ===== PLAYER COUNT UI + AUTO HOP (FIXED) =====
 repeat task.wait() until game:IsLoaded() and game.Players.LocalPlayer
 
--- anti duplicate
 if getgenv().LOW_SERVER_HOP_LOADED then return end
 getgenv().LOW_SERVER_HOP_LOADED = true
 
@@ -12,88 +11,83 @@ local LocalPlayer = Players.LocalPlayer
 
 local PLACE_ID = game.PlaceId
 local JOB_ID = game.JobId
-local HOP_DELAY = 30 -- seconds
-
--- ===== QUEUE ON TELEPORT (AUTO RUN AGAIN) =====
-local QUEUE_CODE = [[
-loadstring(game:HttpGet("PUT_THIS_SCRIPT_LINK_HERE"))()
-]]
-
-if queue_on_teleport then
-    queue_on_teleport(QUEUE_CODE)
-elseif syn and syn.queue_on_teleport then
-    syn.queue_on_teleport(QUEUE_CODE)
-end
+local HOP_DELAY = 30
 
 -- ===== UI =====
-local gui = Instance.new("ScreenGui")
-gui.Name = "PlayerCountUI"
+local gui = Instance.new("ScreenGui", LocalPlayer.PlayerGui)
 gui.ResetOnSpawn = false
-gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
 local frame = Instance.new("Frame", gui)
-frame.Size = UDim2.new(0, 220, 0, 90)
-frame.Position = UDim2.new(0, 20, 0.35, 0)
-frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+frame.Size = UDim2.new(0,220,0,90)
+frame.Position = UDim2.new(0,20,0.35,0)
+frame.BackgroundColor3 = Color3.fromRGB(20,20,20)
 frame.BorderSizePixel = 0
 frame.Active = true
 frame.Draggable = true
 
 local title = Instance.new("TextLabel", frame)
-title.Size = UDim2.new(1, 0, 0, 30)
+title.Size = UDim2.new(1,0,0,30)
 title.BackgroundTransparency = 1
 title.Text = "Server Monitor"
-title.TextColor3 = Color3.fromRGB(0, 255, 0)
+title.TextColor3 = Color3.fromRGB(0,255,0)
 title.Font = Enum.Font.SourceSansBold
 title.TextScaled = true
 
 local info = Instance.new("TextLabel", frame)
-info.Position = UDim2.new(0, 5, 0, 35)
-info.Size = UDim2.new(1, -10, 1, -40)
+info.Position = UDim2.new(0,5,0,35)
+info.Size = UDim2.new(1,-10,1,-40)
 info.BackgroundTransparency = 1
-info.TextXAlignment = Enum.TextXAlignment.Left
-info.TextYAlignment = Enum.TextYAlignment.Top
-info.TextColor3 = Color3.fromRGB(255, 255, 255)
-info.Font = Enum.Font.SourceSans
+info.TextColor3 = Color3.fromRGB(255,255,255)
+info.TextXAlignment = Left
+info.TextYAlignment = Top
 info.TextSize = 14
-info.TextWrapped = true
+info.Font = Enum.Font.SourceSans
 
--- update UI
 local function updateUI()
     info.Text =
-        "Players: " .. #Players:GetPlayers() .. "\n" ..
-        "Auto hop: ON\n" ..
-        "Hop every: " .. HOP_DELAY .. "s"
+        "Players: "..#Players:GetPlayers().."\n"..
+        "Auto hop: ON\n"..
+        "Every: "..HOP_DELAY.."s"
 end
-
-Players.PlayerAdded:Connect(updateUI)
-Players.PlayerRemoving:Connect(updateUI)
 updateUI()
 
--- ===== FIND LOWEST PLAYER SERVER =====
+-- ===== GET LOWEST SERVER (FIXED) =====
 local function getLowestServer()
-    local lowestServer
-    local lowestCount = math.huge
+    local lowestServer, lowestCount
+    local cursor = ""
 
-    local url = "https://games.roblox.com/v1/games/" .. PLACE_ID .. "/servers/Public?sortOrder=Asc&limit=100"
-    local data = HttpService:JSONDecode(game:HttpGet(url))
+    for i = 1, 5 do -- duyệt 5 trang (≈500 server)
+        local url =
+            "https://games.roblox.com/v1/games/"..PLACE_ID..
+            "/servers/Public?sortOrder=Asc&limit=100&cursor="..cursor
 
-    for _, server in ipairs(data.data) do
-        if server.id ~= JOB_ID and server.playing < server.maxPlayers then
-            if server.playing < lowestCount then
-                lowestCount = server.playing
-                lowestServer = server.id
+        local ok, res = pcall(function()
+            return HttpService:JSONDecode(game:HttpGet(url))
+        end)
+
+        if not ok or not res or not res.data then break end
+
+        for _, s in ipairs(res.data) do
+            if s.id ~= JOB_ID and s.playing < s.maxPlayers then
+                if not lowestCount or s.playing < lowestCount then
+                    lowestCount = s.playing
+                    lowestServer = s.id
+                end
             end
         end
+
+        cursor = res.nextPageCursor
+        if not cursor then break end
     end
 
-    return lowestServer, lowestCount
+    print("[AUTO HOP] Found server:", lowestServer, "Players:", lowestCount)
+    return lowestServer
 end
 
 -- ===== AUTO HOP LOOP =====
 task.spawn(function()
     while task.wait(HOP_DELAY) do
-        local serverId, count = getLowestServer()
+        local serverId = getLowestServer()
         if serverId then
             TeleportService:TeleportToPlaceInstance(PLACE_ID, serverId, LocalPlayer)
         end
