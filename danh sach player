@@ -116,9 +116,9 @@ task.spawn(function()
     end
 end)
 
---================= AUTO HOP + RETRY (65s + 1s) =================--
+--================= AUTO HOP + RETRY (25s + 1s) =================--
 task.spawn(function()
-    task.wait(65) -- chờ 65s đầu
+    task.wait(25) -- chờ 25s đầu
 
     while true do
         if not ServerList[1] then
