@@ -116,17 +116,19 @@ task.spawn(function()
     end
 end)
 
---================= AUTO HOP + RETRY (25s + 1s) =================--
 task.spawn(function()
-    task.wait(25) -- chờ 25s đầu
+
+    task.wait(25) -- chờ 25s đầu (theo yêu cầu của bạn)
 
     while true do
+        -- nếu chưa có server hợp lệ
         if not ServerList[1] then
             status.Text = "Status: No server available"
             task.wait(1)
             continue
         end
 
+        -- thử teleport
         local ok, err = pcall(function()
             status.Text = "Status: Teleporting → "..ServerList[1].id
             TeleportService:TeleportToPlaceInstance(
@@ -137,12 +139,18 @@ task.spawn(function()
         end)
 
         if ok then
-            warn("✅ Teleport started → Server:", ServerList[1].id)
-            break -- teleport thành công, Roblox sẽ chuyển server
+            -- ⚠️ QUAN TRỌNG:
+            -- ok = gửi lệnh teleport thành công
+            -- KHÔNG đồng nghĩa đã sang server
+            warn("⏳ Teleport requested → waiting server change...")
+            status.Text = "Status: Waiting server transfer..."
         else
-            warn("❌ Teleport failed, retry in 1s:", err)
-            status.Text = "Status: Retry teleport in 1s"
-            task.wait(1)
+            warn("❌ Teleport failed:", err)
+            status.Text = "Status: Teleport error, retrying..."
         end
+
+        -- cứ mỗi 1s lại gửi teleport
+        -- đến khi Roblox thực sự chuyển server
+        task.wait(1)
     end
 end)
