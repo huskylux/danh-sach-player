@@ -112,13 +112,13 @@ task.spawn(function()
     while true do
         count.Text = "Current Server Players: "..#Players:GetPlayers()
         UpdateServers()
-        task.wait(1)
+        task.wait()
     end
 end)
 
 task.spawn(function()
 
-    task.wait(20) -- chờ 20s đầu (theo yêu cầu của bạn)
+    task.wait(30) -- chờ 330s đầu (theo yêu cầu của bạn)
 
     while true do
         -- nếu chưa có server hợp lệ
