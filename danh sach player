@@ -1,73 +1,81 @@
---== Services ==--
+--================= ANTI LOAD AGAIN =================--
+getgenv().SERVER_HOP_LOADED = getgenv().SERVER_HOP_LOADED or false
+if getgenv().SERVER_HOP_LOADED then return end
+getgenv().SERVER_HOP_LOADED = true
+
+--================= SERVICES =================--
+repeat task.wait() until game:IsLoaded() and game.Players.LocalPlayer
+
 local Players = game:GetService("Players")
 local HttpService = game:GetService("HttpService")
 local TeleportService = game:GetService("TeleportService")
-local RunService = game:GetService("RunService")
 
-local LocalPlayer = Players.LocalPlayer
+local LP = Players.LocalPlayer
 local PlaceId = game.PlaceId
 
---== GUI ==--
-local ScreenGui = Instance.new("ScreenGui", game.CoreGui)
-local Frame = Instance.new("Frame", ScreenGui)
-Frame.Size = UDim2.new(0, 300, 0, 400)
-Frame.Position = UDim2.new(0, 10, 0, 10)
-Frame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-Frame.BorderSizePixel = 0
+--================= GUI =================--
+local gui = Instance.new("ScreenGui", game.CoreGui)
+gui.Name = "ServerHopGUI"
 
-local PlayerCountLabel = Instance.new("TextLabel", Frame)
-PlayerCountLabel.Size = UDim2.new(1, -10, 0, 30)
-PlayerCountLabel.Position = UDim2.new(0, 5, 0, 5)
-PlayerCountLabel.TextColor3 = Color3.new(1,1,1)
-PlayerCountLabel.TextScaled = true
-PlayerCountLabel.BackgroundTransparency = 1
-PlayerCountLabel.Text = "Players: 0"
+local frame = Instance.new("Frame", gui)
+frame.Size = UDim2.new(0, 320, 0, 420)
+frame.Position = UDim2.new(0, 10, 0, 10)
+frame.BackgroundColor3 = Color3.fromRGB(30,30,30)
+frame.BorderSizePixel = 0
 
-local ServerListLabel = Instance.new("TextLabel", Frame)
-ServerListLabel.Size = UDim2.new(1, -10, 1, -40)
-ServerListLabel.Position = UDim2.new(0, 5, 0, 35)
-ServerListLabel.TextColor3 = Color3.new(1,1,1)
-ServerListLabel.TextWrapped = true
-ServerListLabel.TextYAlignment = Enum.TextYAlignment.Top
-ServerListLabel.BackgroundTransparency = 1
-ServerListLabel.Text = "Server list:\n"
+local title = Instance.new("TextLabel", frame)
+title.Size = UDim2.new(1,0,0,30)
+title.Text = "SERVER HOP (LEAST PLAYER)"
+title.TextColor3 = Color3.new(1,1,1)
+title.BackgroundTransparency = 1
+title.TextScaled = true
 
---== Variables ==--
-local ServerData = {}
+local count = Instance.new("TextLabel", frame)
+count.Position = UDim2.new(0,0,0,30)
+count.Size = UDim2.new(1,0,0,25)
+count.TextColor3 = Color3.fromRGB(0,255,0)
+count.BackgroundTransparency = 1
+count.TextScaled = true
 
---== Functions ==--
-local function updatePlayerCount()
-    PlayerCountLabel.Text = "Players: "..tostring(#Players:GetPlayers())
-end
+local list = Instance.new("TextLabel", frame)
+list.Position = UDim2.new(0,5,0,60)
+list.Size = UDim2.new(1,-10,1,-65)
+list.TextWrapped = true
+list.TextYAlignment = Enum.TextYAlignment.Top
+list.TextXAlignment = Enum.TextXAlignment.Left
+list.TextColor3 = Color3.new(1,1,1)
+list.BackgroundTransparency = 1
+list.Text = ""
 
-local function getServers(cursor)
-    local url = "https://games.roblox.com/v1/games/"..PlaceId.."/servers/Public?sortOrder=Asc&limit=100"
-    if cursor then
-        url = url.."&cursor="..cursor
-    end
+--================= SERVER LOGIC =================--
+local ServerList = {}
 
-    local success, response = pcall(function()
+local function GetServers(cursor)
+    local url = "https://games.roblox.com/v1/games/"..PlaceId.."/servers/Public?limit=100&sortOrder=Asc"
+    if cursor then url = url.."&cursor="..cursor end
+
+    local ok, res = pcall(function()
         return game:HttpGet(url)
     end)
 
-    if success then
-        local data = HttpService:JSONDecode(response)
-        return data
-    else
-        return nil
+    if ok then
+        return HttpService:JSONDecode(res)
     end
 end
 
-local function updateServerList()
-    local allServers = {}
-    local cursor = nil
+local function UpdateServers()
+    local all = {}
+    local cursor
 
     repeat
-        local data = getServers(cursor)
+        local data = GetServers(cursor)
         if data and data.data then
-            for _, server in ipairs(data.data) do
-                if server.playing < server.maxPlayers then -- chỉ lấy server còn chỗ
-                    table.insert(allServers, {id = server.id, players = server.playing, maxPlayers = server.maxPlayers})
+            for _,v in ipairs(data.data) do
+                if v.playing < v.maxPlayers then
+                    table.insert(all,{
+                        id = v.id,
+                        players = v.playing
+                    })
                 end
             end
             cursor = data.nextPageCursor
@@ -76,38 +84,38 @@ local function updateServerList()
         end
     until not cursor
 
-    table.sort(allServers, function(a,b) return a.players < b.players end)
-    ServerData = allServers
+    table.sort(all,function(a,b)
+        return a.players < b.players
+    end)
 
-    -- Update GUI
-    local text = "Server list (least players first):\n"
-    for i, s in ipairs(allServers) do
-        text = text..i..". ID:"..s.id.." Players:"..s.players.."/"..s.maxPlayers.."\n"
+    ServerList = all
+
+    local txt = ""
+    for i,v in ipairs(all) do
+        txt ..= i..". ["..v.players.." players] "..v.id.."\n"
     end
-    ServerListLabel.Text = text
+    list.Text = txt
 end
 
---== Auto hop server every 50s ==--
-spawn(function()
+--================= AUTO UPDATE (1s) =================--
+task.spawn(function()
     while true do
-        wait(50)
-        if #ServerData > 0 then
-            for _, s in ipairs(ServerData) do
-                if s.players < s.maxPlayers then
-                    print("Teleporting to server: "..s.id.." with "..s.players.." players")
-                    TeleportService:TeleportToPlaceInstance(PlaceId, s.id, LocalPlayer)
-                    break
-                end
-            end
-        end
+        count.Text = "Current Server Players: "..#Players:GetPlayers()
+        UpdateServers()
+        task.wait(1)
     end
 end)
 
---== Update GUI and server list every 1s ==--
-spawn(function()
+--================= AUTO HOP (50s) =================--
+task.spawn(function()
     while true do
-        updatePlayerCount()
-        updateServerList()
-        wait(1)
+        task.wait(50)
+        if ServerList[1] then
+            TeleportService:TeleportToPlaceInstance(
+                PlaceId,
+                ServerList[1].id,
+                LP
+            )
+        end
     end
 end)
