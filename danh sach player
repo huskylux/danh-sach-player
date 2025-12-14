@@ -118,7 +118,7 @@ end)
 
 task.spawn(function()
 
-    task.wait(25) -- chờ 25s đầu (theo yêu cầu của bạn)
+    task.wait(40) -- chờ 40s đầu (theo yêu cầu của bạn)
 
     while true do
         -- nếu chưa có server hợp lệ
