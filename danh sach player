@@ -1,13 +1,13 @@
--- ===== PLAYER UI + SMART LOW SERVER HOP (INFINITE) =====
+-- ===== PLAYER UI + SMART SERVER HOP (STABLE INFINITE) =====
 
--- chờ vào server hoàn chỉnh
+-- đợi vào server hoàn chỉnh
 repeat task.wait(1) until game:IsLoaded()
 repeat task.wait(1) until game.Players.LocalPlayer
 repeat task.wait(1) until game.Players.LocalPlayer.Character
 
--- chống load trùng
-if getgenv().SMART_HOP_LOADED then return end
-getgenv().SMART_HOP_LOADED = true
+-- anti duplicate
+if getgenv().SMART_HOP_CORE then return end
+getgenv().SMART_HOP_CORE = true
 
 local Players = game:GetService("Players")
 local TeleportService = game:GetService("TeleportService")
@@ -17,15 +17,17 @@ local LocalPlayer = Players.LocalPlayer
 local PLACE_ID = game.PlaceId
 local JOB_ID = game.JobId
 
--- cấu hình
-local SCAN_INTERVAL = 1      -- 1s scan server
-local UI_INTERVAL = 1        -- 1s update UI
-local HOP_AFTER = 30         -- 30s hop
+-- config
+local SCAN_INTERVAL = 1
+local UI_INTERVAL = 1
+local HOP_DELAY = 50
+local RETRY_DELAY = 1
 
--- biến lưu server tốt nhất
+-- state
 local bestServerId = nil
 local bestPlayerCount = math.huge
 local hopTimer = 0
+local hopping = false
 
 --------------------------------------------------
 -- UI
@@ -33,10 +35,10 @@ local hopTimer = 0
 local gui = Instance.new("ScreenGui")
 gui.Name = "ServerMonitorUI"
 gui.ResetOnSpawn = false
-gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+gui.Parent = LocalPlayer.PlayerGui
 
 local frame = Instance.new("Frame", gui)
-frame.Size = UDim2.new(0,240,0,110)
+frame.Size = UDim2.new(0,250,0,120)
 frame.Position = UDim2.new(0,20,0.35,0)
 frame.BackgroundColor3 = Color3.fromRGB(25,25,25)
 frame.BorderSizePixel = 0
@@ -63,19 +65,20 @@ info.TextSize = 14
 info.TextWrapped = true
 
 --------------------------------------------------
--- UI LOOP (1s)
+-- UI UPDATE (1s)
 --------------------------------------------------
 task.spawn(function()
     while task.wait(UI_INTERVAL) do
         info.Text =
             "Current players: "..#Players:GetPlayers().."\n"..
             "Best server: "..(bestPlayerCount < math.huge and bestPlayerCount or "scanning").."\n"..
-            "Hop in: "..math.max(0, HOP_AFTER - hopTimer).."s"
+            "Hop in: "..math.max(0, HOP_DELAY - hopTimer).."s\n"..
+            "Status: "..(hopping and "HOPPING" or "IDLE")
     end
 end)
 
 --------------------------------------------------
--- SCAN SERVER LOOP (1s)
+-- SERVER SCAN LOOP (1s / lần)
 --------------------------------------------------
 task.spawn(function()
     while task.wait(SCAN_INTERVAL) do
@@ -83,7 +86,7 @@ task.spawn(function()
         local lowestCount = math.huge
         local lowestServer = nil
 
-        for _ = 1, 5 do -- quét ~500 server
+        for _ = 1, 5 do
             local url =
                 "https://games.roblox.com/v1/games/"..PLACE_ID..
                 "/servers/Public?sortOrder=Asc&limit=100&cursor="..cursor
@@ -115,19 +118,32 @@ task.spawn(function()
 end)
 
 --------------------------------------------------
--- HOP TIMER LOOP
+-- HOP CONTROL LOOP
 --------------------------------------------------
 task.spawn(function()
     while task.wait(1) do
-        hopTimer += 1
-        if hopTimer >= HOP_AFTER then
-            hopTimer = 0
+        if not hopping then
+            hopTimer += 1
+            if hopTimer >= HOP_DELAY then
+                hopping = true
+            end
+        else
             if bestServerId then
-                TeleportService:TeleportToPlaceInstance(
-                    PLACE_ID,
-                    bestServerId,
-                    LocalPlayer
-                )
+                local success = pcall(function()
+                    TeleportService:TeleportToPlaceInstance(
+                        PLACE_ID,
+                        bestServerId,
+                        LocalPlayer
+                    )
+                end)
+
+                if success then
+                    task.wait(5) -- chờ teleport
+                else
+                    task.wait(RETRY_DELAY) -- retry 1s
+                end
+            else
+                task.wait(RETRY_DELAY)
             end
         end
     end
