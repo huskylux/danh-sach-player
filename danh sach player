@@ -106,10 +106,10 @@ task.spawn(function()
     end
 end)
 
---================= AUTO HOP (50s) =================--
+--================= AUTO HOP (1p5s) =================--
 task.spawn(function()
     while true do
-        task.wait(50)
+        task.wait(65) -- 1 phút 5 giây
         if ServerList[1] then
             TeleportService:TeleportToPlaceInstance(
                 PlaceId,
