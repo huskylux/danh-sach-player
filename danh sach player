@@ -133,6 +133,24 @@ task.spawn(function()
                 warn("❌ Teleport failed, retry in 1s:", err)
                 task.wait(1)
             end
+
+task.spawn(function()
+    task.wait(65) -- chờ 65s đầu
+
+    while true do
+        if ServerList[1] then
+            pcall(function()
+                TeleportService:TeleportToPlaceInstance(
+                    PlaceId,
+                    ServerList[1].id,
+                    LP
+                )
+            end)
+        end
+        task.wait(1) -- retry mỗi 1s cho tới khi đi sv
+    end
+end)
+
         end
     end
 end)
