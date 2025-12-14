@@ -27,6 +27,26 @@ task.spawn(function()
         end)
     end
 end)
+-------------------- Tạo UI
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+
+local TextLabel = Instance.new("TextLabel")
+TextLabel.Size = UDim2.new(0, 200, 0, 50)
+TextLabel.Position = UDim2.new(0, 10, 0, 10)
+TextLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+TextLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+TextLabel.TextScaled = true
+TextLabel.Parent = ScreenGui
+
+-- Cập nhật số player
+task.spawn(function()
+    while task.wait(UI_UPDATE_TIME) do
+        pcall(function()
+            TextLabel.Text = "[UI] Player trong server: "..#Players:GetPlayers()
+        end)
+    end
+end)
 
 -- ================== HÀM LẤY SERVER ÍT NGƯỜI ==================
 local function GetLowestServer()
