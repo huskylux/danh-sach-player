@@ -1,8 +1,8 @@
--- ===== PLAYER COUNT UI + AUTO HOP (FIXED) =====
+-- ===== STABLE AUTO HOP LOWEST SERVER =====
 repeat task.wait() until game:IsLoaded() and game.Players.LocalPlayer
 
-if getgenv().LOW_SERVER_HOP_LOADED then return end
-getgenv().LOW_SERVER_HOP_LOADED = true
+if getgenv().AUTO_HOP_STABLE then return end
+getgenv().AUTO_HOP_STABLE = true
 
 local Players = game:GetService("Players")
 local TeleportService = game:GetService("TeleportService")
@@ -11,85 +11,125 @@ local LocalPlayer = Players.LocalPlayer
 
 local PLACE_ID = game.PlaceId
 local JOB_ID = game.JobId
+
 local HOP_DELAY = 30
+local RETRY_DELAY = 3
+local MAX_PAGES = 5 -- ~500 server
 
 -- ===== UI =====
 local gui = Instance.new("ScreenGui", LocalPlayer.PlayerGui)
 gui.ResetOnSpawn = false
 
 local frame = Instance.new("Frame", gui)
-frame.Size = UDim2.new(0,220,0,90)
+frame.Size = UDim2.new(0,260,0,120)
 frame.Position = UDim2.new(0,20,0.35,0)
 frame.BackgroundColor3 = Color3.fromRGB(20,20,20)
 frame.BorderSizePixel = 0
 frame.Active = true
 frame.Draggable = true
 
-local title = Instance.new("TextLabel", frame)
-title.Size = UDim2.new(1,0,0,30)
-title.BackgroundTransparency = 1
-title.Text = "Server Monitor"
-title.TextColor3 = Color3.fromRGB(0,255,0)
-title.Font = Enum.Font.SourceSansBold
-title.TextScaled = true
-
 local info = Instance.new("TextLabel", frame)
-info.Position = UDim2.new(0,5,0,35)
-info.Size = UDim2.new(1,-10,1,-40)
+info.Size = UDim2.new(1,-10,1,-10)
+info.Position = UDim2.new(0,5,0,5)
 info.BackgroundTransparency = 1
-info.TextColor3 = Color3.fromRGB(255,255,255)
+info.TextWrapped = true
 info.TextXAlignment = Left
 info.TextYAlignment = Top
-info.TextSize = 14
+info.TextColor3 = Color3.fromRGB(255,255,255)
 info.Font = Enum.Font.SourceSans
+info.TextSize = 14
 
-local function updateUI()
-    info.Text =
-        "Players: "..#Players:GetPlayers().."\n"..
-        "Auto hop: ON\n"..
-        "Every: "..HOP_DELAY.."s"
+local function setUI(text)
+    info.Text = text
 end
-updateUI()
 
--- ===== GET LOWEST SERVER (FIXED) =====
-local function getLowestServer()
-    local lowestServer, lowestCount
-    local cursor = ""
+-- ===== FIND BEST SERVER (NO FAIL) =====
+local function findBestServer()
+    while true do
+        local bestOpenServer, bestOpenCount
+        local bestAnyServer, bestAnyCount
+        local cursor = ""
 
-    for i = 1, 5 do -- duyệt 5 trang (≈500 server)
-        local url =
-            "https://games.roblox.com/v1/games/"..PLACE_ID..
-            "/servers/Public?sortOrder=Asc&limit=100&cursor="..cursor
+        setUI("Players here: "..#Players:GetPlayers().."\nSearching servers...")
 
-        local ok, res = pcall(function()
-            return HttpService:JSONDecode(game:HttpGet(url))
-        end)
+        local successRequest = false
 
-        if not ok or not res or not res.data then break end
+        for page = 1, MAX_PAGES do
+            local url =
+                "https://games.roblox.com/v1/games/"..PLACE_ID..
+                "/servers/Public?sortOrder=Asc&limit=100&cursor="..cursor
 
-        for _, s in ipairs(res.data) do
-            if s.id ~= JOB_ID and s.playing < s.maxPlayers then
-                if not lowestCount or s.playing < lowestCount then
-                    lowestCount = s.playing
-                    lowestServer = s.id
+            local ok, res = pcall(function()
+                return HttpService:JSONDecode(game:HttpGet(url))
+            end)
+
+            if not ok or not res or not res.data then
+                break
+            end
+
+            successRequest = true
+
+            for _, s in ipairs(res.data) do
+                if s.id ~= JOB_ID then
+                    -- server còn slot
+                    if s.playing < s.maxPlayers then
+                        if not bestOpenCount or s.playing < bestOpenCount then
+                            bestOpenCount = s.playing
+                            bestOpenServer = s.id
+                        end
+                    end
+                    -- server ít người nhất (kể cả full)
+                    if not bestAnyCount or s.playing < bestAnyCount then
+                        bestAnyCount = s.playing
+                        bestAnyServer = s.id
+                    end
                 end
             end
+
+            cursor = res.nextPageCursor
+            if not cursor then break end
         end
 
-        cursor = res.nextPageCursor
-        if not cursor then break end
-    end
+        -- ưu tiên server còn slot
+        if bestOpenServer then
+            setUI(
+                "Players here: "..#Players:GetPlayers()..
+                "\nFound OPEN server"..
+                "\nPlayers: "..bestOpenCount..
+                "\nTeleporting..."
+            )
+            return bestOpenServer
+        end
 
-    print("[AUTO HOP] Found server:", lowestServer, "Players:", lowestCount)
-    return lowestServer
+        -- fallback: server ít người nhất dù full
+        if bestAnyServer then
+            setUI(
+                "Players here: "..#Players:GetPlayers()..
+                "\nNo open server"..
+                "\nFallback server"..
+                "\nPlayers: "..bestAnyCount..
+                "\nTeleporting..."
+            )
+            return bestAnyServer
+        end
+
+        -- không tìm được gì → retry
+        if not successRequest then
+            setUI("HTTP failed...\nRetrying in "..RETRY_DELAY.."s")
+        else
+            setUI("No server found...\nRetrying in "..RETRY_DELAY.."s")
+        end
+
+        task.wait(RETRY_DELAY)
+    end
 end
 
--- ===== AUTO HOP LOOP =====
+-- ===== MAIN LOOP =====
 task.spawn(function()
-    while task.wait(HOP_DELAY) do
-        local serverId = getLowestServer()
-        if serverId then
-            TeleportService:TeleportToPlaceInstance(PLACE_ID, serverId, LocalPlayer)
-        end
+    while true do
+        task.wait(HOP_DELAY)
+        local serverId = findBestServer()
+        TeleportService:TeleportToPlaceInstance(PLACE_ID, serverId, LocalPlayer)
+        break -- teleport xong là sang server khác
     end
 end)
