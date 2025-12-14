@@ -124,7 +124,7 @@ task.spawn(function()
         -- nếu chưa có server hợp lệ
         if not ServerList[1] then
             status.Text = "Status: No server available"
-            task.wait()
+            task.wait(0.3)
             continue
         end
 
@@ -151,6 +151,6 @@ task.spawn(function()
 
         -- cứ mỗi 0s lại gửi teleport
         -- đến khi Roblox thực sự chuyển server
-        task.wait()
+        task.wait(0.3)
     end
 end)
