@@ -1,19 +1,40 @@
--- ===== PLAYER LIST UI =====
+-- ===== PLAYER COUNT UI + AUTO HOP LOWEST SERVER =====
 repeat task.wait() until game:IsLoaded() and game.Players.LocalPlayer
 
+-- anti duplicate
+if getgenv().LOW_SERVER_HOP_LOADED then return end
+getgenv().LOW_SERVER_HOP_LOADED = true
+
 local Players = game:GetService("Players")
+local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
 local LocalPlayer = Players.LocalPlayer
 
--- Create GUI
+local PLACE_ID = game.PlaceId
+local JOB_ID = game.JobId
+local HOP_DELAY = 30 -- seconds
+
+-- ===== QUEUE ON TELEPORT (AUTO RUN AGAIN) =====
+local QUEUE_CODE = [[
+loadstring(game:HttpGet("PUT_THIS_SCRIPT_LINK_HERE"))()
+]]
+
+if queue_on_teleport then
+    queue_on_teleport(QUEUE_CODE)
+elseif syn and syn.queue_on_teleport then
+    syn.queue_on_teleport(QUEUE_CODE)
+end
+
+-- ===== UI =====
 local gui = Instance.new("ScreenGui")
-gui.Name = "PlayerListUI"
+gui.Name = "PlayerCountUI"
 gui.ResetOnSpawn = false
 gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
 local frame = Instance.new("Frame", gui)
-frame.Size = UDim2.new(0, 250, 0, 300)
-frame.Position = UDim2.new(0, 20, 0.3, 0)
-frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+frame.Size = UDim2.new(0, 220, 0, 90)
+frame.Position = UDim2.new(0, 20, 0.35, 0)
+frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 frame.BorderSizePixel = 0
 frame.Active = true
 frame.Draggable = true
@@ -21,33 +42,60 @@ frame.Draggable = true
 local title = Instance.new("TextLabel", frame)
 title.Size = UDim2.new(1, 0, 0, 30)
 title.BackgroundTransparency = 1
-title.Text = "Player List"
+title.Text = "Server Monitor"
 title.TextColor3 = Color3.fromRGB(0, 255, 0)
-title.TextScaled = true
 title.Font = Enum.Font.SourceSansBold
+title.TextScaled = true
 
-local list = Instance.new("TextLabel", frame)
-list.Position = UDim2.new(0, 5, 0, 35)
-list.Size = UDim2.new(1, -10, 1, -40)
-list.BackgroundTransparency = 1
-list.TextXAlignment = Enum.TextXAlignment.Left
-list.TextYAlignment = Enum.TextYAlignment.Top
-list.TextWrapped = true
-list.Font = Enum.Font.SourceSans
-list.TextColor3 = Color3.fromRGB(255, 255, 255)
-list.TextSize = 14
+local info = Instance.new("TextLabel", frame)
+info.Position = UDim2.new(0, 5, 0, 35)
+info.Size = UDim2.new(1, -10, 1, -40)
+info.BackgroundTransparency = 1
+info.TextXAlignment = Enum.TextXAlignment.Left
+info.TextYAlignment = Enum.TextYAlignment.Top
+info.TextColor3 = Color3.fromRGB(255, 255, 255)
+info.Font = Enum.Font.SourceSans
+info.TextSize = 14
+info.TextWrapped = true
 
--- Update function
-local function updateList()
-    local text = ""
-    for _, plr in ipairs(Players:GetPlayers()) do
-        text ..= "- " .. plr.Name .. "\n"
-    end
-    list.Text = text
+-- update UI
+local function updateUI()
+    info.Text =
+        "Players: " .. #Players:GetPlayers() .. "\n" ..
+        "Auto hop: ON\n" ..
+        "Hop every: " .. HOP_DELAY .. "s"
 end
 
--- Events
-Players.PlayerAdded:Connect(updateList)
-Players.PlayerRemoving:Connect(updateList)
+Players.PlayerAdded:Connect(updateUI)
+Players.PlayerRemoving:Connect(updateUI)
+updateUI()
 
-updateList()
+-- ===== FIND LOWEST PLAYER SERVER =====
+local function getLowestServer()
+    local lowestServer
+    local lowestCount = math.huge
+
+    local url = "https://games.roblox.com/v1/games/" .. PLACE_ID .. "/servers/Public?sortOrder=Asc&limit=100"
+    local data = HttpService:JSONDecode(game:HttpGet(url))
+
+    for _, server in ipairs(data.data) do
+        if server.id ~= JOB_ID and server.playing < server.maxPlayers then
+            if server.playing < lowestCount then
+                lowestCount = server.playing
+                lowestServer = server.id
+            end
+        end
+    end
+
+    return lowestServer, lowestCount
+end
+
+-- ===== AUTO HOP LOOP =====
+task.spawn(function()
+    while task.wait(HOP_DELAY) do
+        local serverId, count = getLowestServer()
+        if serverId then
+            TeleportService:TeleportToPlaceInstance(PLACE_ID, serverId, LocalPlayer)
+        end
+    end
+end)
