@@ -3,9 +3,10 @@ getgenv().SERVER_HOP_LOADED = getgenv().SERVER_HOP_LOADED or false
 if getgenv().SERVER_HOP_LOADED then return end
 getgenv().SERVER_HOP_LOADED = true
 
---================= SERVICES =================--
+--================= WAIT GAME =================--
 repeat task.wait() until game:IsLoaded() and game.Players.LocalPlayer
 
+--================= SERVICES =================--
 local Players = game:GetService("Players")
 local HttpService = game:GetService("HttpService")
 local TeleportService = game:GetService("TeleportService")
@@ -106,16 +107,32 @@ task.spawn(function()
     end
 end)
 
---================= AUTO HOP (1p5s) =================--
+--================= AUTO HOP + RETRY =================--
 task.spawn(function()
     while true do
-        task.wait(65) -- 1 phút 5 giây
-        if ServerList[1] then
-            TeleportService:TeleportToPlaceInstance(
-                PlaceId,
-                ServerList[1].id,
-                LP
-            )
+        task.wait(65) -- 1 phút 5 giây trước khi bắt đầu hop
+
+        while true do
+            if not ServerList[1] then
+                task.wait(1)
+                continue
+            end
+
+            local success, err = pcall(function()
+                TeleportService:TeleportToPlaceInstance(
+                    PlaceId,
+                    ServerList[1].id,
+                    LP
+                )
+            end)
+
+            if success then
+                warn("✅ Teleport started → Server:", ServerList[1].id)
+                break -- teleport đã bắt đầu, Roblox sẽ chuyển sv
+            else
+                warn("❌ Teleport failed, retry in 1s:", err)
+                task.wait(1)
+            end
         end
     end
 end)
