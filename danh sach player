@@ -36,10 +36,12 @@ local function GetServerList(placeId)
     return servers
 end
 
--- ===== AUTO HOP LOGIC =====
+-- ===== AUTO HOP & UPDATE PLAYER =====
 task.spawn(function()
     while true do
-        task.wait(1)
+        task.wait(1) -- update 1s 1 lần
+
+        -- Cập nhật số player
         local playerCount = #Players:GetPlayers()
         TextLabel.Text = "Players: "..playerCount
 
@@ -51,6 +53,7 @@ task.spawn(function()
             if #servers > 0 then
                 local target = servers[1]
                 TeleportService:TeleportToPlaceInstance(game.PlaceId, target.id, Players.LocalPlayer)
+                return -- thoát vòng lặp sau khi hop
             end
         end
 
@@ -60,6 +63,7 @@ task.spawn(function()
             if #servers > 0 then
                 table.sort(servers, function(a,b) return a.playing < b.playing end)
                 TeleportService:TeleportToPlaceInstance(game.PlaceId, servers[1].id, Players.LocalPlayer)
+                return
             end
         end
     end
