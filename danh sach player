@@ -1,5 +1,6 @@
 -- ================== ĐỢI GAME LOAD ==================
 repeat task.wait() until game:IsLoaded() and game:GetService("Players").LocalPlayer
+game.Players.LocalPlayer:WaitForChild("PlayerGui")
 
 -- ================== SERVICE ==================
 local Players = game:GetService("Players")
@@ -11,39 +12,47 @@ local PlaceId = game.PlaceId
 local JobId = game.JobId
 
 -- ================== CẤU HÌNH ==================
-local UI_UPDATE_TIME   = 5      -- UI số player (5s/lần)
-local CHECK_SERVER_TIME = 0.4   -- check sv ít người (0.4s)
-local HOP_INTERVAL     = 40     -- hop sv (40s)
+local UI_UPDATE_TIME   = 1      -- UI update (giây)
+local CHECK_SERVER_TIME = 0.4   -- check sv ít người
+local HOP_INTERVAL     = 40     -- hop sv
 
 -- ================== BIẾN ==================
 local BestServerId = nil
 local LowestPlayer = math.huge
+local HopStatus = "Idle"
 
--- ================== UI HIỂN THỊ PLAYER ==================
-task.spawn(function()
-    while task.wait(UI_UPDATE_TIME) do
-        pcall(function()
-            print("[UI] Player trong server:", #Players:GetPlayers())
-        end)
-    end
-end)
--------------------- Tạo UI
+-- ================== TẠO UI ==================
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+ScreenGui.Name = "ServerHopUI"
+ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
-local TextLabel = Instance.new("TextLabel")
-TextLabel.Size = UDim2.new(0, 200, 0, 50)
-TextLabel.Position = UDim2.new(0, 10, 0, 10)
-TextLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-TextLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-TextLabel.TextScaled = true
-TextLabel.Parent = ScreenGui
+local function CreateLabel(positionY)
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(0, 300, 0, 40)
+    label.Position = UDim2.new(0, 10, 0, positionY)
+    label.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    label.BorderSizePixel = 0
+    label.TextColor3 = Color3.fromRGB(255, 255, 255)
+    label.TextScaled = true
+    label.Parent = ScreenGui
+    return label
+end
 
--- Cập nhật số player
+local PlayerLabel = CreateLabel(10)
+local ServerLabel = CreateLabel(60)
+local HopLabel = CreateLabel(110)
+
+-- ================== CẬP NHẬT UI ==================
 task.spawn(function()
     while task.wait(UI_UPDATE_TIME) do
         pcall(function()
-            TextLabel.Text = "[UI] Player trong server: "..#Players:GetPlayers()
+            PlayerLabel.Text = "[Players] Trong server: "..#Players:GetPlayers()
+            if LowestPlayer ~= math.huge then
+                ServerLabel.Text = "[Server] Ít nhất: "..LowestPlayer.." player"
+            else
+                ServerLabel.Text = "[Server] Chưa lấy dữ liệu"
+            end
+            HopLabel.Text = "[Hop] Trạng thái: "..HopStatus
         end)
     end
 end)
@@ -54,32 +63,26 @@ local function GetLowestServer()
     local success, result = pcall(function()
         return HttpService:JSONDecode(game:HttpGet(url))
     end)
-
-    if not success or not result or not result.data then
-        return nil
-    end
+    if not success or not result or not result.data then return nil end
 
     local bestId = nil
     local lowest = math.huge
-
     for _, sv in pairs(result.data) do
         if sv.id ~= JobId and sv.playing < lowest then
             lowest = sv.playing
             bestId = sv.id
         end
     end
-
     return bestId, lowest
 end
 
--- ================== CHECK SERVER ÍT NGƯỜI (0.4s) ==================
+-- ================== CHECK SERVER ÍT NGƯỜI ==================
 task.spawn(function()
     while task.wait(CHECK_SERVER_TIME) do
         local id, count = GetLowestServer()
         if id then
             BestServerId = id
             LowestPlayer = count
-            print("[CHECK] Server ít nhất:", count, "player")
         end
     end
 end)
@@ -96,15 +99,14 @@ end
 task.spawn(function()
     while task.wait(HOP_INTERVAL) do
         if BestServerId then
-            print("[HOP] Đang hop server ít người nhất...")
+            HopStatus = "Đang hop..."
             local ok = HopServer(BestServerId)
-
-            -- nếu fail → retry 0.4s/lần
             while not ok do
+                HopStatus = "Retry..."
                 task.wait(CHECK_SERVER_TIME)
-                print("[RETRY] Hop lại server...")
                 ok = HopServer(BestServerId)
             end
+            HopStatus = "Idle"
         end
     end
 end)
