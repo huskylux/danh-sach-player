@@ -15,12 +15,13 @@ local JobId = game.JobId
 local UI_UPDATE_TIME    = 1
 local CHECK_SERVER_TIME = 0.4
 local HOP_TIMEOUT       = 40      -- chờ teleport tối đa (giây) trước khi coi là fail
-local HOP_INTERVAL      = 40      -- (không bắt buộc) dùng làm default / thông tin
-local MAX_SERVER_CACHE  = 10 -- lưu tối đa bao nhiêu sv ít người
+local WAIT_BEFORE_HOP   = 40      -- đợi 40 giây trước khi hop
+local MAX_SERVER_CACHE  = 10      -- lưu tối đa bao nhiêu sv ít người
 
 -- ================== BIẾN ==================
 local ServerQueue = {}
 local HopStatus = "Idle"
+local Countdown = 0
 
 -- ================== TẠO UI ==================
 local ScreenGui = Instance.new("ScreenGui", LocalPlayer.PlayerGui)
@@ -38,16 +39,18 @@ local function CreateLabel(y)
     return l
 end
 
-local PlayerLabel = CreateLabel(10)
-local QueueLabel  = CreateLabel(60)
-local HopLabel    = CreateLabel(110)
+local PlayerLabel   = CreateLabel(10)
+local QueueLabel    = CreateLabel(60)
+local HopLabel      = CreateLabel(110)
+local CountdownLabel= CreateLabel(160)
 
 -- ================== UI UPDATE ==================
 task.spawn(function()
     while task.wait(UI_UPDATE_TIME) do
-        PlayerLabel.Text = "[Players] Trong sv: "..#Players:GetPlayers()
-        QueueLabel.Text  = "[Queue] Sv chờ hop: "..#ServerQueue
-        HopLabel.Text    = "[Hop] "..HopStatus
+        PlayerLabel.Text    = "[Players] Trong sv: "..#Players:GetPlayers()
+        QueueLabel.Text     = "[Queue] Sv chờ hop: "..#ServerQueue
+        HopLabel.Text       = "[Hop] "..HopStatus
+        CountdownLabel.Text = "[Countdown] "..Countdown.."s"
     end
 end)
 
@@ -81,19 +84,16 @@ task.spawn(function()
     end
 end)
 
--- ================== HÀM TELEPORT KÈM TIMEOUT (CHECK BẰNG JobId) ==================
+-- ================== HÀM TELEPORT KÈM TIMEOUT ==================
 local function TryTeleportWithTimeout(serverId, timeout)
-    -- lưu JobId hiện tại để kiểm tra sau khi gọi Teleport
     local startJob = game.JobId
     local ok, err = pcall(function()
         TeleportService:TeleportToPlaceInstance(PlaceId, serverId, LocalPlayer)
     end)
     if not ok then
-        -- lỗi gọi Teleport (vd: permission) -> coi là fail ngay
         return false, ("Teleport call error: "..tostring(err))
     end
 
-    -- chờ tới `timeout` giây để JobId thay đổi (tức là teleport thực sự xảy ra)
     local waited = 0
     local interval = 0.5
     while waited < timeout do
@@ -103,12 +103,10 @@ local function TryTeleportWithTimeout(serverId, timeout)
             return true
         end
     end
-
-    -- nếu hết timeout mà JobId chưa đổi -> coi như fail
     return false, "timeout"
 end
 
--- ================== HOP SERVER: thử từng sv liên tiếp tới khi thành công ==================
+-- ================== HOP SERVER ==================
 task.spawn(function()
     while true do
         HopStatus = "Chuẩn bị hop"
@@ -124,30 +122,35 @@ task.spawn(function()
         while #ServerQueue > 0 do
             triedAny = true
             local sv = table.remove(ServerQueue, 1)
-            HopStatus = "Hop sv ("..sv.players.." players) -> "..sv.id
 
+            -- Đếm ngược 40s trước khi hop
+            HopStatus = "Đếm ngược trước khi hop sv ("..sv.players.." players)"
+            Countdown = WAIT_BEFORE_HOP
+            for i = WAIT_BEFORE_HOP,1,-1 do
+                Countdown = i
+                task.wait(1)
+            end
+
+            HopStatus = "Hop sv ("..sv.players.." players) -> "..sv.id
             local success, reason = TryTeleportWithTimeout(sv.id, HOP_TIMEOUT)
             if success then
                 HopStatus = "Đang teleport..."
-                return -- teleport thành công -> script dừng ở sv này
+                return -- thành công -> dừng script
             else
-                -- thất bại: tiếp tục thử sv tiếp theo ngay lập tức
                 if reason then
                     HopStatus = "Fail ("..tostring(reason)..") → thử sv khác"
                 else
                     HopStatus = "Fail → thử sv khác"
                 end
-                task.wait(0.5) -- small delay trước khi thử tiếp
+                task.wait(0.5)
             end
         end
 
-        -- nếu đã thử hết danh sách
         if triedAny then
             HopStatus = "Fail toàn bộ – reset danh sách"
             FetchLowServers()
-            task.wait(3) -- đợi 3s trước khi thử vòng mới (tùy chỉnh)
+            task.wait(3)
         else
-            -- không có server -> chờ lâu hơn rồi thử lại
             HopStatus = "Không tìm được server, chờ..."
             task.wait(5)
         end
