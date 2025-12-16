@@ -13,15 +13,15 @@ local JobId = game.JobId
 
 -- ================== CẤU HÌNH ==================
 local UI_UPDATE_TIME    = 1
-local CHECK_SERVER_TIME = 0.4
-local HOP_TIMEOUT       = 40      -- chờ teleport tối đa (giây) trước khi coi là fail
-local HOP_INTERVAL      = 40      -- sau 40s sẽ hop sv liên tục
-local MAX_SERVER_CACHE  = 10      -- lưu tối đa bao nhiêu sv ít người
+local CHECK_SERVER_TIME = 5       -- mỗi 5s fetch lại danh sách server
+local HOP_TIMEOUT       = 10      -- chờ teleport tối đa (giây)
+local WAIT_BEFORE_HOP   = 40      -- chờ 40s trước khi bắt đầu hop
+local MAX_SERVER_CACHE  = 20      -- số server ít người tối đa lưu
 
 -- ================== BIẾN ==================
 local ServerQueue = {}
 local HopStatus = "Idle"
-local Countdown = 0
+local Countdown = WAIT_BEFORE_HOP
 
 -- ================== TẠO UI ==================
 local ScreenGui = Instance.new("ScreenGui", LocalPlayer.PlayerGui)
@@ -65,26 +65,30 @@ local function FetchLowServers()
     ServerQueue = {}
     for _, sv in ipairs(data.data) do
         if sv.id ~= JobId and sv.playing < sv.maxPlayers then
-            table.insert(ServerQueue, {
-                id = sv.id,
-                players = sv.playing
-            })
+            table.insert(ServerQueue, sv)
         end
-        if #ServerQueue >= MAX_SERVER_CACHE then break end
+    end
+
+    -- sắp xếp theo số người chơi tăng dần (ít người nhất lên đầu)
+    table.sort(ServerQueue, function(a, b)
+        return a.playing < b.playing
+    end)
+
+    -- chỉ giữ tối đa MAX_SERVER_CACHE server
+    while #ServerQueue > MAX_SERVER_CACHE do
+        table.remove(ServerQueue)
     end
 end
 
 -- ================== CHECK SERVER LIÊN TỤC ==================
 task.spawn(function()
     while task.wait(CHECK_SERVER_TIME) do
-        if #ServerQueue == 0 then
-            FetchLowServers()
-        end
+        FetchLowServers()
     end
 end)
 
--- ================== HÀM TELEPORT KÈM TIMEOUT ==================
-local function TryTeleportWithTimeout(serverId, timeout)
+-- ================== HÀM TELEPORT ==================
+local function TryTeleport(serverId)
     local startJob = game.JobId
     local ok, err = pcall(function()
         TeleportService:TeleportToPlaceInstance(PlaceId, serverId, LocalPlayer)
@@ -95,7 +99,7 @@ local function TryTeleportWithTimeout(serverId, timeout)
 
     local waited = 0
     local interval = 0.5
-    while waited < timeout do
+    while waited < HOP_TIMEOUT do
         task.wait(interval)
         waited = waited + interval
         if game.JobId ~= startJob then
@@ -105,37 +109,28 @@ local function TryTeleportWithTimeout(serverId, timeout)
     return false, "timeout"
 end
 
--- ================== HOP SERVER LIÊN TỤC SAU 40S ==================
+-- ================== HOP SERVER SAU 40S, MỖI GIÂY ==================
 task.spawn(function()
+    -- đếm ngược 40s trước khi bắt đầu hop
+    for i = WAIT_BEFORE_HOP,1,-1 do
+        Countdown = i
+        task.wait(1)
+    end
+
     while true do
-        HopStatus = "Chuẩn bị hop"
-
-        if #ServerQueue == 0 then
-            HopStatus = "Không có sv – quét lại"
-            FetchLowServers()
-            task.wait(1)
-        end
-
-        local sv = table.remove(ServerQueue, 1)
-        if sv then
-            -- Đếm ngược 40s trước khi hop
-            HopStatus = "Đếm ngược trước khi hop sv ("..sv.players.." players)"
-            for i = HOP_INTERVAL,1,-1 do
-                Countdown = i
-                task.wait(1)
-            end
-
-            HopStatus = "Hop sv ("..sv.players.." players) -> "..sv.id
-            local success, reason = TryTeleportWithTimeout(sv.id, HOP_TIMEOUT)
+        if #ServerQueue > 0 then
+            local sv = ServerQueue[1] -- luôn chọn server ít người nhất
+            HopStatus = "Hop sv ("..sv.playing.." players) -> "..sv.id
+            local success, reason = TryTeleport(sv.id)
             if success then
-                HopStatus = "Teleport thành công – tiếp tục hop sau "..HOP_INTERVAL.."s"
-                -- không return nữa, sau 40s lại hop tiếp server khác
+                HopStatus = "Teleport thành công"
+                -- sau khi thành công, vẫn tiếp tục hop sau 1s
             else
-                HopStatus = "Fail ("..tostring(reason)..") → thử sv khác sau "..HOP_INTERVAL.."s"
+                HopStatus = "Fail ("..tostring(reason)..") → thử lại"
             end
         else
-            HopStatus = "Không tìm được server, chờ..."
-            task.wait(HOP_INTERVAL)
+            HopStatus = "Không tìm được server"
         end
+        task.wait(1) -- mỗi giây thử hop một lần
     end
 end)
