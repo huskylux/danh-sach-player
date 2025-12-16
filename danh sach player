@@ -12,7 +12,7 @@ local PlaceId = game.PlaceId
 local JobId = game.JobId
 
 -- ================== CẤU HÌNH ==================
-local WAIT_BEFORE_HOP   = 40      -- chờ 40s trước khi hop
+local WAIT_BEFORE_HOP   =         -- chờ 40s trước khi hop
 local CHECK_SERVER_TIME = 10      -- mỗi 10s fetch lại danh sách server
 local HOP_TIMEOUT       = 20      -- chờ teleport tối đa (giây)
 local MAX_SERVER_CACHE  = 20      -- số server ít người tối đa lưu
