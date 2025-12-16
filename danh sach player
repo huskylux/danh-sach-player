@@ -12,10 +12,9 @@ local PlaceId = game.PlaceId
 local JobId = game.JobId
 
 -- ================== CẤU HÌNH ==================
-local UI_UPDATE_TIME    = 1
+local WAIT_BEFORE_HOP   = 40      -- chờ 40s trước khi hop
 local CHECK_SERVER_TIME = 5       -- mỗi 5s fetch lại danh sách server
-local HOP_TIMEOUT       = 10      -- chờ teleport tối đa (giây)
-local WAIT_BEFORE_HOP   = 40      -- chờ 40s trước khi bắt đầu hop
+local HOP_TIMEOUT       = 20      -- chờ teleport tối đa (giây)
 local MAX_SERVER_CACHE  = 20      -- số server ít người tối đa lưu
 
 -- ================== BIẾN ==================
@@ -23,7 +22,7 @@ local ServerQueue = {}
 local HopStatus = "Idle"
 local Countdown = WAIT_BEFORE_HOP
 
--- ================== TẠO UI ==================
+-- ================== UI ==================
 local ScreenGui = Instance.new("ScreenGui", LocalPlayer.PlayerGui)
 ScreenGui.Name = "ServerHopUI"
 
@@ -44,9 +43,8 @@ local QueueLabel    = CreateLabel(60)
 local HopLabel      = CreateLabel(110)
 local CountdownLabel= CreateLabel(160)
 
--- ================== UI UPDATE ==================
 task.spawn(function()
-    while task.wait(UI_UPDATE_TIME) do
+    while task.wait(1) do
         PlayerLabel.Text    = "[Players] Trong sv: "..#Players:GetPlayers()
         QueueLabel.Text     = "[Queue] Sv chờ hop: "..#ServerQueue
         HopLabel.Text       = "[Hop] "..HopStatus
@@ -69,7 +67,7 @@ local function FetchLowServers()
         end
     end
 
-    -- sắp xếp theo số người chơi tăng dần (ít người nhất lên đầu)
+    -- sắp xếp theo số người chơi tăng dần
     table.sort(ServerQueue, function(a, b)
         return a.playing < b.playing
     end)
@@ -80,7 +78,6 @@ local function FetchLowServers()
     end
 end
 
--- ================== CHECK SERVER LIÊN TỤC ==================
 task.spawn(function()
     while task.wait(CHECK_SERVER_TIME) do
         FetchLowServers()
@@ -109,9 +106,9 @@ local function TryTeleport(serverId)
     return false, "timeout"
 end
 
--- ================== HOP SERVER SAU 40S, MỖI GIÂY ==================
+-- ================== HOP SERVER SAU 40S ==================
 task.spawn(function()
-    -- đếm ngược 40s trước khi bắt đầu hop
+    -- đếm ngược 40s
     for i = WAIT_BEFORE_HOP,1,-1 do
         Countdown = i
         task.wait(1)
@@ -119,18 +116,25 @@ task.spawn(function()
 
     while true do
         if #ServerQueue > 0 then
-            local sv = ServerQueue[1] -- luôn chọn server ít người nhất
-            HopStatus = "Hop sv ("..sv.playing.." players) -> "..sv.id
-            local success, reason = TryTeleport(sv.id)
-            if success then
-                HopStatus = "Teleport thành công"
-                -- sau khi thành công, vẫn tiếp tục hop sau 1s
-            else
-                HopStatus = "Fail ("..tostring(reason)..") → thử lại"
+            HopStatus = "Đang thử hop..."
+            local success = false
+            for _, sv in ipairs(ServerQueue) do
+                HopStatus = "Hop sv ("..sv.playing.." players) -> "..sv.id
+                local ok, reason = TryTeleport(sv.id)
+                if ok then
+                    HopStatus = "Teleport thành công"
+                    success = true
+                    break
+                else
+                    HopStatus = "Fail ("..tostring(reason)..") → thử sv kế"
+                end
+            end
+            if not success then
+                HopStatus = "Không hop được sv nào"
             end
         else
             HopStatus = "Không tìm được server"
         end
-        task.wait(1) -- mỗi giây thử hop một lần
+        task.wait(10) -- chờ 10s rồi thử lại
     end
 end)
