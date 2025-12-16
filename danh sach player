@@ -15,7 +15,7 @@ local JobId = game.JobId
 local UI_UPDATE_TIME    = 1
 local CHECK_SERVER_TIME = 0.4
 local HOP_TIMEOUT       = 40      -- chờ teleport tối đa (giây) trước khi coi là fail
-local WAIT_BEFORE_HOP   = 40      -- đếm ngược 40 giây trước khi hop
+local HOP_INTERVAL      = 40      -- sau 40s sẽ hop sv liên tục
 local MAX_SERVER_CACHE  = 10      -- lưu tối đa bao nhiêu sv ít người
 
 -- ================== BIẾN ==================
@@ -105,7 +105,7 @@ local function TryTeleportWithTimeout(serverId, timeout)
     return false, "timeout"
 end
 
--- ================== HOP SERVER + AUTO RECONNECT ==================
+-- ================== HOP SERVER LIÊN TỤC SAU 40S ==================
 task.spawn(function()
     while true do
         HopStatus = "Chuẩn bị hop"
@@ -116,16 +116,11 @@ task.spawn(function()
             task.wait(1)
         end
 
-        local triedAny = false
-
-        while #ServerQueue > 0 do
-            triedAny = true
-            local sv = table.remove(ServerQueue, 1)
-
-            -- Đếm ngược trước khi hop
+        local sv = table.remove(ServerQueue, 1)
+        if sv then
+            -- Đếm ngược 40s trước khi hop
             HopStatus = "Đếm ngược trước khi hop sv ("..sv.players.." players)"
-            Countdown = WAIT_BEFORE_HOP
-            for i = WAIT_BEFORE_HOP,1,-1 do
+            for i = HOP_INTERVAL,1,-1 do
                 Countdown = i
                 task.wait(1)
             end
@@ -133,28 +128,14 @@ task.spawn(function()
             HopStatus = "Hop sv ("..sv.players.." players) -> "..sv.id
             local success, reason = TryTeleportWithTimeout(sv.id, HOP_TIMEOUT)
             if success then
-                HopStatus = "Teleport thành công – theo dõi kết nối"
-                -- Theo dõi kết nối, nếu mất thì reconnect
-                while true do
-                    task.wait(5)
-                    if not LocalPlayer or not LocalPlayer.Parent then
-                        HopStatus = "Mất kết nối – tự động reconnect"
-                        break -- quay lại vòng ngoài để reconnect
-                    end
-                end
+                HopStatus = "Teleport thành công – tiếp tục hop sau "..HOP_INTERVAL.."s"
+                -- không return nữa, sau 40s lại hop tiếp server khác
             else
-                HopStatus = "Fail ("..tostring(reason)..") → thử sv khác"
-                task.wait(0.5)
+                HopStatus = "Fail ("..tostring(reason)..") → thử sv khác sau "..HOP_INTERVAL.."s"
             end
-        end
-
-        if triedAny then
-            HopStatus = "Fail toàn bộ – reset danh sách"
-            FetchLowServers()
-            task.wait(3)
         else
             HopStatus = "Không tìm được server, chờ..."
-            task.wait(5)
+            task.wait(HOP_INTERVAL)
         end
     end
 end)
