@@ -106,7 +106,7 @@ local function TryTeleportWithTimeout(serverId, timeout)
     return false, "timeout"
 end
 
--- ================== HOP SERVER ==================
+-- ================== HOP SERVER + AUTO RECONNECT ==================
 task.spawn(function()
     while true do
         HopStatus = "Chuẩn bị hop"
@@ -122,26 +122,21 @@ task.spawn(function()
         while #ServerQueue > 0 do
             triedAny = true
             local sv = table.remove(ServerQueue, 1)
-
-            -- Đếm ngược 40s trước khi hop
-            HopStatus = "Đếm ngược trước khi hop sv ("..sv.players.." players)"
-            Countdown = WAIT_BEFORE_HOP
-            for i = WAIT_BEFORE_HOP,1,-1 do
-                Countdown = i
-                task.wait(1)
-            end
-
             HopStatus = "Hop sv ("..sv.players.." players) -> "..sv.id
+
             local success, reason = TryTeleportWithTimeout(sv.id, HOP_TIMEOUT)
             if success then
-                HopStatus = "Đang teleport..."
-                return -- thành công -> dừng script
-            else
-                if reason then
-                    HopStatus = "Fail ("..tostring(reason)..") → thử sv khác"
-                else
-                    HopStatus = "Fail → thử sv khác"
+                HopStatus = "Teleport thành công – theo dõi kết nối"
+                -- KHÔNG return nữa, tiếp tục vòng lặp để auto reconnect nếu mất kết nối
+                while true do
+                    task.wait(5)
+                    if not LocalPlayer or not LocalPlayer.Parent then
+                        HopStatus = "Mất kết nối – tự động reconnect"
+                        break -- thoát vòng để reconnect
+                    end
                 end
+            else
+                HopStatus = "Fail ("..tostring(reason)..") → thử sv khác"
                 task.wait(0.5)
             end
         end
