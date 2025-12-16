@@ -15,7 +15,7 @@ local JobId = game.JobId
 local UI_UPDATE_TIME    = 1
 local CHECK_SERVER_TIME = 0.4
 local HOP_TIMEOUT       = 40      -- chờ teleport tối đa (giây) trước khi coi là fail
-local WAIT_BEFORE_HOP   = 40      -- đợi 40 giây trước khi hop
+local WAIT_BEFORE_HOP   = 40      -- đếm ngược 40 giây trước khi hop
 local MAX_SERVER_CACHE  = 10      -- lưu tối đa bao nhiêu sv ít người
 
 -- ================== BIẾN ==================
@@ -54,7 +54,7 @@ task.spawn(function()
     end
 end)
 
--- ================== LẤY SERVER ÍT NGƯỜI (DANH SÁCH) ==================
+-- ================== LẤY SERVER ÍT NGƯỜI ==================
 local function FetchLowServers()
     local url = "https://games.roblox.com/v1/games/"..PlaceId.."/servers/Public?limit=100&sortOrder=Asc"
     local success, data = pcall(function()
@@ -63,7 +63,6 @@ local function FetchLowServers()
     if not success or not data or not data.data then return end
 
     ServerQueue = {}
-
     for _, sv in ipairs(data.data) do
         if sv.id ~= JobId and sv.playing < sv.maxPlayers then
             table.insert(ServerQueue, {
@@ -75,7 +74,7 @@ local function FetchLowServers()
     end
 end
 
--- ================== CHECK SERVER ÍT NGƯỜI LIÊN TỤC ==================
+-- ================== CHECK SERVER LIÊN TỤC ==================
 task.spawn(function()
     while task.wait(CHECK_SERVER_TIME) do
         if #ServerQueue == 0 then
@@ -122,17 +121,25 @@ task.spawn(function()
         while #ServerQueue > 0 do
             triedAny = true
             local sv = table.remove(ServerQueue, 1)
-            HopStatus = "Hop sv ("..sv.players.." players) -> "..sv.id
 
+            -- Đếm ngược trước khi hop
+            HopStatus = "Đếm ngược trước khi hop sv ("..sv.players.." players)"
+            Countdown = WAIT_BEFORE_HOP
+            for i = WAIT_BEFORE_HOP,1,-1 do
+                Countdown = i
+                task.wait(1)
+            end
+
+            HopStatus = "Hop sv ("..sv.players.." players) -> "..sv.id
             local success, reason = TryTeleportWithTimeout(sv.id, HOP_TIMEOUT)
             if success then
                 HopStatus = "Teleport thành công – theo dõi kết nối"
-                -- KHÔNG return nữa, tiếp tục vòng lặp để auto reconnect nếu mất kết nối
+                -- Theo dõi kết nối, nếu mất thì reconnect
                 while true do
                     task.wait(5)
                     if not LocalPlayer or not LocalPlayer.Parent then
                         HopStatus = "Mất kết nối – tự động reconnect"
-                        break -- thoát vòng để reconnect
+                        break -- quay lại vòng ngoài để reconnect
                     end
                 end
             else
