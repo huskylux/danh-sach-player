@@ -16,6 +16,7 @@ local WAIT_BEFORE_HOP   = 40      -- chờ 40s trước khi hop
 local CHECK_SERVER_TIME = 5       -- mỗi 5s fetch lại danh sách server
 local HOP_TIMEOUT       = 20      -- chờ teleport tối đa (giây)
 local MAX_SERVER_CACHE  = 20      -- số server ít người tối đa lưu
+local RETRY_DELAY       = 10      -- delay giữa các lần hop
 
 -- ================== BIẾN ==================
 local ServerQueue = {}
@@ -123,6 +124,9 @@ task.spawn(function()
                 local ok, reason = TryTeleport(sv.id)
                 if ok then
                     HopStatus = "Teleport thành công"
+                    -- cập nhật lại JobId và fetch lại server mới
+                    JobId = game.JobId
+                    FetchLowServers()
                     success = true
                     break
                 else
@@ -135,6 +139,6 @@ task.spawn(function()
         else
             HopStatus = "Không tìm được server"
         end
-        task.wait(10) -- chờ 10s rồi thử lại
+        task.wait(RETRY_DELAY) -- chờ rồi thử lại
     end
 end)
