@@ -17,6 +17,7 @@ local CHECK_SERVER_TIME = 10      -- mỗi 10s fetch lại danh sách server
 local HOP_TIMEOUT       = 20      -- chờ teleport tối đa (giây)
 local MAX_SERVER_CACHE  = 20      -- số server ít người tối đa lưu
 local RETRY_DELAY       = 30      -- delay giữa các lần hop
+local MAX_PING          = 250     -- chỉ chọn server có ping <= 250ms
 
 -- ================== BIẾN ==================
 local ServerQueue = {}
@@ -53,7 +54,7 @@ task.spawn(function()
     end
 end)
 
--- ================== LẤY SERVER ÍT NGƯỜI ==================
+-- ================== LẤY SERVER ÍT NGƯỜI + PING ==================
 local function FetchLowServers()
     local url = "https://games.roblox.com/v1/games/"..PlaceId.."/servers/Public?limit=100&sortOrder=Asc"
     local success, data = pcall(function()
@@ -63,13 +64,21 @@ local function FetchLowServers()
 
     ServerQueue = {}
     for _, sv in ipairs(data.data) do
+        -- lọc: khác JobId, chưa full, và ping hợp lệ
         if sv.id ~= JobId and sv.playing < sv.maxPlayers then
-            table.insert(ServerQueue, sv)
+            if sv.ping and sv.ping <= MAX_PING then
+                table.insert(ServerQueue, sv)
+            end
         end
     end
 
+    -- sắp xếp theo số người chơi tăng dần, nếu bằng thì theo ping
     table.sort(ServerQueue, function(a, b)
-        return a.playing < b.playing
+        if a.playing == b.playing then
+            return (a.ping or 9999) < (b.ping or 9999)
+        else
+            return a.playing < b.playing
+        end
     end)
 
     while #ServerQueue > MAX_SERVER_CACHE do
@@ -117,7 +126,7 @@ task.spawn(function()
             HopStatus = "Đang thử hop..."
             local success = false
             for _, sv in ipairs(ServerQueue) do
-                HopStatus = "Hop sv ("..sv.playing.." players) -> "..sv.id
+                HopStatus = "Hop sv ("..sv.playing.." players, "..(sv.ping or "?").."ms) -> "..sv.id
                 local ok, reason = TryTeleport(sv.id)
                 if ok then
                     HopStatus = "Teleport thành công"
@@ -135,6 +144,6 @@ task.spawn(function()
         else
             HopStatus = "Không tìm được server"
         end
-        task.wait(RETRY_DELAY) -- chờ rồi thử lại
+        task.wait(RETRY_DELAY)
     end
 end)
