@@ -17,7 +17,7 @@ local CHECK_SERVER_TIME = 10      -- mỗi 10s fetch lại danh sách server
 local HOP_TIMEOUT       = 20      -- chờ teleport tối đa (giây)
 local MAX_SERVER_CACHE  = 20      -- số server ít người tối đa lưu
 local RETRY_DELAY       = 30      -- delay giữa các lần hop
-local MAX_PING          = 250     -- chỉ chọn server có ping <= 250ms
+local MAX_PING          = 100     -- chỉ chọn server có ping <= 250ms
 
 -- ================== BIẾN ==================
 local ServerQueue = {}
