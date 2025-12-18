@@ -1,27 +1,149 @@
+-- ================== ĐỢI GAME LOAD ==================
+repeat task.wait() until game:IsLoaded() and game:GetService("Players").LocalPlayer
+game.Players.LocalPlayer:WaitForChild("PlayerGui")
+
+-- ================== SERVICE ==================
 local Players = game:GetService("Players")
+local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
 
-local screenGui = script.Parent
-local loadingFrame = screenGui:WaitForChild("LoadingFrame")
-local playerCountLabel = screenGui:WaitForChild("PlayerCountLabel")
+local LocalPlayer = Players.LocalPlayer
+local PlaceId = game.PlaceId
+local JobId = game.JobId
 
--- Loading screen
-if not game:IsLoaded() then
-    loadingFrame.Visible = true
-    game.Loaded:Wait()
+-- ================== CẤU HÌNH ==================
+local WAIT_BEFORE_HOP   = 90      -- chờ 90s trước khi hop
+local CHECK_SERVER_TIME = 10      -- mỗi 10s fetch lại danh sách server
+local HOP_TIMEOUT       = 20      -- chờ teleport tối đa (giây)
+local MAX_SERVER_CACHE  = 20      -- số server ít người tối đa lưu
+local RETRY_DELAY       = 30      -- delay giữa các lần hop
+local MAX_PING          = 250     -- chỉ chọn server có ping <= 250ms
+
+-- ================== BIẾN ==================
+local ServerQueue = {}
+local HopStatus = "Idle"
+local Countdown = WAIT_BEFORE_HOP
+
+-- ================== UI ==================
+local ScreenGui = Instance.new("ScreenGui", LocalPlayer.PlayerGui)
+ScreenGui.Name = "ServerHopUI"
+
+local function CreateLabel(y)
+    local l = Instance.new("TextLabel")
+    l.Size = UDim2.new(0, 320, 0, 40)
+    l.Position = UDim2.new(0, 10, 0, y)
+    l.BackgroundColor3 = Color3.fromRGB(25,25,25)
+    l.BorderSizePixel = 0
+    l.TextColor3 = Color3.new(1,1,1)
+    l.TextScaled = true
+    l.Parent = ScreenGui
+    return l
 end
-loadingFrame.Visible = false
 
--- Hàm cập nhật số người chơi
-local function updateCount()
-    local count = #Players:GetPlayers()
-    playerCountLabel.Text = "👥 Người chơi trong server: " .. count
+local PlayerLabel   = CreateLabel(10)
+local QueueLabel    = CreateLabel(60)
+local HopLabel      = CreateLabel(110)
+local CountdownLabel= CreateLabel(160)
+
+task.spawn(function()
+    while task.wait(1) do
+        PlayerLabel.Text    = "[Players] Trong sv: "..#Players:GetPlayers()
+        QueueLabel.Text     = "[Queue] Sv chờ hop: "..#ServerQueue
+        HopLabel.Text       = "[Hop] "..HopStatus
+        CountdownLabel.Text = "[Countdown] "..Countdown.."s"
+    end
+end)
+
+-- ================== LẤY SERVER ÍT NGƯỜI + PING ==================
+local function FetchLowServers()
+    local url = "https://games.roblox.com/v1/games/"..PlaceId.."/servers/Public?limit=100&sortOrder=Asc"
+    local success, data = pcall(function()
+        return HttpService:JSONDecode(game:HttpGet(url))
+    end)
+    if not success or not data or not data.data then return end
+
+    ServerQueue = {}
+    for _, sv in ipairs(data.data) do
+        -- lọc: khác JobId, chưa full, và ping hợp lệ
+        if sv.id ~= JobId and sv.playing < sv.maxPlayers then
+            if sv.ping and sv.ping <= MAX_PING then
+                table.insert(ServerQueue, sv)
+            end
+        end
+    end
+
+    -- sắp xếp theo số người chơi tăng dần, nếu bằng thì theo ping
+    table.sort(ServerQueue, function(a, b)
+        if a.playing == b.playing then
+            return (a.ping or 9999) < (b.ping or 9999)
+        else
+            return a.playing < b.playing
+        end
+    end)
+
+    while #ServerQueue > MAX_SERVER_CACHE do
+        table.remove(ServerQueue)
+    end
 end
 
--- Gọi lần đầu
-updateCount()
+task.spawn(function()
+    while task.wait(CHECK_SERVER_TIME) do
+        FetchLowServers()
+    end
+end)
 
--- Cập nhật mỗi 3 giây
-while true do
-    updateCount()
-    task.wait(3)
+-- ================== HÀM TELEPORT ==================
+local function TryTeleport(serverId)
+    local startJob = game.JobId
+    local ok, err = pcall(function()
+        TeleportService:TeleportToPlaceInstance(PlaceId, serverId, LocalPlayer)
+    end)
+    if not ok then
+        return false, ("Teleport call error: "..tostring(err))
+    end
+
+    local waited = 0
+    local interval = 0.5
+    while waited < HOP_TIMEOUT do
+        task.wait(interval)
+        waited = waited + interval
+        if game.JobId ~= startJob then
+            return true
+        end
+    end
+    return false, "timeout"
 end
+
+-- ================== HOP SERVER SAU 40S ==================
+task.spawn(function()
+    for i = WAIT_BEFORE_HOP,1,-1 do
+        Countdown = i
+        task.wait(1)
+    end
+
+    while true do
+        if #ServerQueue > 0 then
+            HopStatus = "Đang thử hop..."
+            local success = false
+            for _, sv in ipairs(ServerQueue) do
+                HopStatus = "Hop sv ("..sv.playing.." players, "..(sv.ping or "?").."ms) -> "..sv.id
+                local ok, reason = TryTeleport(sv.id)
+                if ok then
+                    HopStatus = "Teleport thành công"
+                    JobId = game.JobId -- cập nhật lại JobId mới
+                    FetchLowServers()  -- fetch lại danh sách server
+                    success = true
+                    break
+                else
+                    HopStatus = "Fail ("..tostring(reason)..") → thử sv kế"
+                end
+            end
+            if not success then
+                HopStatus = "Không hop được sv nào"
+            end
+        else
+            HopStatus = "Không tìm được server"
+        end
+        task.wait(RETRY_DELAY)
+    end
+end)
